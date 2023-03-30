@@ -8,14 +8,24 @@ import timeit
 model = YOLO('./data/yolov8n.pt')  # load a pretrained model (recommended for training)
 cap = cv2.VideoCapture('./data/test3.avi')
 
+def camera_goal_pos(x1,y1, x2,y2,frame):
+    frame_width, frame_height, _ = frame.shape
+    frame_mid_point = (frame_height//2, frame_width//2)
+    target_mid_point = ((x1+x2)//2 , (y1+y2)//2)
+    # Draw a point on the image
+    cv2.circle(frame, frame_mid_point, radius=5, color=(0, 0, 255), thickness=-1)
+    cv2.circle(frame, target_mid_point, radius=5, color=(255, 0, 0), thickness=-1)
+    cv2.line(frame, frame_mid_point, target_mid_point, color=(0, 0, 255), thickness=2)
+
+    
 
 try:
     while True:
         ret, frame = cap.read()
         
+        print(frame.shape)
         # need to cal frame
         start_t = timeit.default_timer()
-
         results = model(frame)[0]
         result_image = results.plot()  # predict on an image
 
@@ -38,6 +48,7 @@ try:
                 
                 if max_arg < result_conf[c]:
                     max_arg = result_conf[c]
+                    camera_goal_pos(int(result_xyxy[c][0]),int(result_xyxy[c][1]),int(result_xyxy[c][2]),int(result_xyxy[c][3]),frame)
                 
                     cv2.rectangle(frame,
                                   (int(result_xyxy[c][0]),int(result_xyxy[c][1])-100),

@@ -40,8 +40,8 @@ PROTOCOL_VERSION            = 2.0
 
 # Factory default ID of all DYNAMIXEL is 1
 # DXL_ID                      = 13
-DXL_ID_list                      = [13, 14]
-
+DXL_ID_list                      = [11, 12, 13]
+DEVICE_NUM = len(DXL_ID_list)
 # Use the actual port assigned to the U2D2.
 DEVICENAME                  = '/dev/ttyUSB0'
 
@@ -56,40 +56,45 @@ dxl_goal_position = [angle_to_pos(190), angle_to_pos(190+30)]       # Goal posit
 
 
 # portHandler_list = PortHandler(DEVICENAME)
-portHandler_list = [PortHandler(DEVICENAME), PortHandler(DEVICENAME)]
 
+portHandler_list = [PortHandler(DEVICENAME) for _ in range(DEVICE_NUM)]
 
-packetHandler = PacketHandler(PROTOCOL_VERSION)
+# packetHandler_list[0] = PacketHandler(PROTOCOL_VERSION)
+packetHandler_list = [PacketHandler(PROTOCOL_VERSION) for _ in range(DEVICE_NUM)]
 
-# Open port
-if portHandler_list[0].openPort():
-    print("Succeeded to open the port")
-else:
-    print("Failed to open the port")
-    print("Press any key to terminate...")
-    getch()
-    quit()
-
-
-# Set port baudrate
-if portHandler_list[0].setBaudRate(BAUDRATE):
-    print("Succeeded to change the baudrate")
-else:
-    print("Failed to change the baudrate")
-    print("Press any key to terminate...")
-    getch()
-    quit()
+# Open port baudrate
+def open_port_and_baud(portHandler_list):
+    # Open port
+    if portHandler_list.openPort():
+        print("Succeeded to open the port")
+    else:
+        print("Failed to open the port")
+        print("Press any key to terminate...")
+        getch()
+        quit()
+    # Set port baudrate
+    if portHandler_list.setBaudRate(BAUDRATE):
+        print("Succeeded to change the baudrate")
+    else:
+        print("Failed to change the baudrate")
+        print("Press any key to terminate...")
+        getch()
+        quit()
 
 # Enable Dynamixel Torque
-dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(portHandler_list[0], DXL_ID_list[0], ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
-if dxl_comm_result != COMM_SUCCESS:
-    print("%s" % packetHandler.getTxRxResult(dxl_comm_result))
-elif dxl_error != 0:
-    print("%s" % packetHandler.getRxPacketError(dxl_error))
-else:
-    print("Dynamixel has been successfully connected")
+def enable_torque(packetHandler, portHandler_list, DXL_ID):
+    global ADDR_TORQUE_ENABLE, TORQUE_ENABLE, COMM_SUCCESS
+    dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(portHandler_list, DXL_ID, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
+    if dxl_comm_result != COMM_SUCCESS:
+        print("%s" % packetHandler.getTxRxResult(dxl_comm_result))
+    elif dxl_error != 0:
+        print("%s" % packetHandler.getRxPacketError(dxl_error))
+    else:
+        print("Dynamixel has been successfully connected")
 
-
+for i in range(0, DEVICE_NUM):
+    open_port_and_baud(portHandler_list[i])
+    enable_torque(packetHandler_list[i], portHandler_list[i], DXL_ID_list[i])
 
 while True:
     print("Press any key to continue! (or press ESC to quit!)")
@@ -97,18 +102,23 @@ while True:
         break
 
     # Write goal position
-    dxl_comm_result, dxl_error = packetHandler.write4ByteTxRx(portHandler_list[0], DXL_ID_list[0], ADDR_GOAL_POSITION, dxl_goal_position[index])
+    for i in range(0, DEVICE_NUM):
+        dxl_comm_result, dxl_error = packetHandler_list[i].write4ByteTxRx(portHandler_list[i], 
+                                                                DXL_ID_list[i], ADDR_GOAL_POSITION, dxl_goal_position[index])
+    
+    
     if dxl_comm_result != COMM_SUCCESS:
-        print("%s" % packetHandler.getTxRxResult(dxl_comm_result))
+        print("%s" % packetHandler_list[0].getTxRxResult(dxl_comm_result))
     elif dxl_error != 0:
-        print("%s" % packetHandler.getRxPacketError(dxl_error))
+        print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
 
+    # read goal and current pos
     while True:
-        dxl_present_position, dxl_comm_result, dxl_error = packetHandler.read4ByteTxRx(portHandler_list[0], DXL_ID_list[0], ADDR_PRESENT_POSITION)
+        dxl_present_position, dxl_comm_result, dxl_error = packetHandler_list[0].read4ByteTxRx(portHandler_list[0], DXL_ID_list[0], ADDR_PRESENT_POSITION)
         if dxl_comm_result != COMM_SUCCESS:
-            print("%s" % packetHandler.getTxRxResult(dxl_comm_result))
+            print("%s" % packetHandler_list[0].getTxRxResult(dxl_comm_result))
         elif dxl_error != 0:
-            print("%s" % packetHandler.getRxPacketError(dxl_error))
+            print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
 
         print(f'id:{DXL_ID_list[0]}, GoalPos :{pos_to_angle(dxl_goal_position[index])}({dxl_goal_position[index]}) \
                                     PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
@@ -124,11 +134,14 @@ while True:
 
 
 # Disable Dynamixel Torque
-dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(portHandler_list[0], DXL_ID_list[0], ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
+for i in range(0, DEVICE_NUM):
+    dxl_comm_result, dxl_error = packetHandler_list[i].write1ByteTxRx(portHandler_list[i], DXL_ID_list[i], ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
+
+
 if dxl_comm_result != COMM_SUCCESS:
-    print("%s" % pos_to_angle(packetHandler.getTxRxResult(dxl_comm_result)))
+    print("%s" % pos_to_angle(packetHandler_list[0].getTxRxResult(dxl_comm_result)))
 elif dxl_error != 0:
-    print("%s" % packetHandler.getRxPacketError(dxl_error))
+    print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
 
 # Close port
 portHandler_list[0].closePort()

@@ -51,8 +51,7 @@ TORQUE_DISABLE              = 0     # Value for disabling the torque
 DXL_MOVING_STATUS_THRESHOLD = 10    # Dynamixel moving status threshold
 
 index = 0
-dxl_goal_position = [angle_to_pos(190), angle_to_pos(190+30)]       # Goal position
-
+dxl_goal_position = [angle_to_pos(140), angle_to_pos(190+30)]       # Goal position
 
 
 # portHandler_list = PortHandler(DEVICENAME)

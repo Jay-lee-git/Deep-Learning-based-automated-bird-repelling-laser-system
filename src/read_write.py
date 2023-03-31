@@ -1,4 +1,5 @@
 import os
+from dynamixel_sdk import * # Uses Dynamixel SDK library
 
 if os.name == 'nt':
     import msvcrt
@@ -16,7 +17,6 @@ else:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         return ch
 
-from dynamixel_sdk import * # Uses Dynamixel SDK library
 
 MY_DXL = 'X_SERIES'       # X330 (5.0 V recommended), X430, X540, 2X430
 
@@ -29,11 +29,11 @@ if MY_DXL == 'X_SERIES' or MY_DXL == 'MX_SERIES':
     DXL_MAXIMUM_POSITION_VALUE  = 4095      # Refer to the Maximum Position Limit of product
     BAUDRATE                    = 1000000
 
-def angle_to_pos(pos):
-    return pos//4095
+def pos_to_angle(pos):
+    return int(pos/4095*365)
 
-def pos_to_angle(angle):
-    return 4095//365 * angle
+def angle_to_pos(angle):
+    return int(4095/365 * angle)
 
 
 PROTOCOL_VERSION            = 2.0
@@ -48,10 +48,10 @@ DEVICENAME                  = '/dev/ttyUSB0'
 
 TORQUE_ENABLE               = 1     # Value for enabling the torque
 TORQUE_DISABLE              = 0     # Value for disabling the torque
-DXL_MOVING_STATUS_THRESHOLD = 1    # Dynamixel moving status threshold
+DXL_MOVING_STATUS_THRESHOLD = 10    # Dynamixel moving status threshold
 
 index = 0
-dxl_goal_position = [pos_to_angle(180), pos_to_angle(180+45)]       # Goal position
+dxl_goal_position = [angle_to_pos(190), angle_to_pos(190+30)]       # Goal position
 
 
 
@@ -110,7 +110,8 @@ while True:
         elif dxl_error != 0:
             print("%s" % packetHandler.getRxPacketError(dxl_error))
 
-        print("[ID:%03d] GoalPos:%03d  PresPos:%03d" % (DXL_ID_list[0], dxl_goal_position[index], dxl_present_position))
+        print(f'id:{DXL_ID_list[0]}, GoalPos :{pos_to_angle(dxl_goal_position[index])}({dxl_goal_position[index]}) \
+                                    PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
 
         if not abs(dxl_goal_position[index] - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD:
             break
@@ -125,7 +126,7 @@ while True:
 # Disable Dynamixel Torque
 dxl_comm_result, dxl_error = packetHandler.write1ByteTxRx(portHandler_list[0], DXL_ID_list[0], ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
 if dxl_comm_result != COMM_SUCCESS:
-    print("%s" % packetHandler.getTxRxResult(dxl_comm_result))
+    print("%s" % pos_to_angle(packetHandler.getTxRxResult(dxl_comm_result)))
 elif dxl_error != 0:
     print("%s" % packetHandler.getRxPacketError(dxl_error))
 

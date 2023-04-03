@@ -18,7 +18,7 @@ else:
         return ch
 
 
-MY_DXL = 'X_SERIES'       # X330 (5.0 V recommended), X430, X540, 2X430
+MY_DXL = 'X_SERIES' # X330 (5.0 V recommended), X430, X540, 2X430
 
 # Control table address
 if MY_DXL == 'X_SERIES' or MY_DXL == 'MX_SERIES':
@@ -43,7 +43,7 @@ PROTOCOL_VERSION            = 2.0
 DXL_ID_list                      = [11, 12, 13]
 DEVICE_NUM = len(DXL_ID_list)
 # Use the actual port assigned to the U2D2.
-DEVICENAME                  = '/dev/ttyUSB0'
+DEVICENAME                  = '/dev/ttyUSB1'
 
 
 TORQUE_ENABLE               = 1     # Value for enabling the torque
@@ -51,14 +51,17 @@ TORQUE_DISABLE              = 0     # Value for disabling the torque
 DXL_MOVING_STATUS_THRESHOLD = 10    # Dynamixel moving status threshold
 
 index = 0
-dxl_goal_position = [angle_to_pos(140), angle_to_pos(190+30)]       # Goal position
+# Goal position
+dxl_goal_position = [
+                     [angle_to_pos(180), angle_to_pos(180)],
+                    [angle_to_pos(180 - 20), angle_to_pos(180+20)],
+                     [angle_to_pos(180), angle_to_pos(180)]]
 
 
-# portHandler_list = PortHandler(DEVICENAME)
 
 portHandler_list = [PortHandler(DEVICENAME) for _ in range(DEVICE_NUM)]
 
-# packetHandler_list[0] = PacketHandler(PROTOCOL_VERSION)
+
 packetHandler_list = [PacketHandler(PROTOCOL_VERSION) for _ in range(DEVICE_NUM)]
 
 # Open port baudrate
@@ -103,8 +106,7 @@ while True:
     # Write goal position
     for i in range(0, DEVICE_NUM):
         dxl_comm_result, dxl_error = packetHandler_list[i].write4ByteTxRx(portHandler_list[i], 
-                                                                DXL_ID_list[i], ADDR_GOAL_POSITION, dxl_goal_position[index])
-    
+                                                                DXL_ID_list[i], ADDR_GOAL_POSITION, dxl_goal_position[i][index])
     
     if dxl_comm_result != COMM_SUCCESS:
         print("%s" % packetHandler_list[0].getTxRxResult(dxl_comm_result))
@@ -112,19 +114,22 @@ while True:
         print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
 
     # read goal and current pos
+    break_bool = False
     while True:
         dxl_present_position, dxl_comm_result, dxl_error = packetHandler_list[0].read4ByteTxRx(portHandler_list[0], DXL_ID_list[0], ADDR_PRESENT_POSITION)
         if dxl_comm_result != COMM_SUCCESS:
             print("%s" % packetHandler_list[0].getTxRxResult(dxl_comm_result))
         elif dxl_error != 0:
             print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
+        for i in range(0, DEVICE_NUM):
+            print(f'id:{DXL_ID_list[0]}, GoalPos :{pos_to_angle(dxl_goal_position[i][index])}   ({dxl_goal_position[i][index]}) \
+                                        PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
 
-        print(f'id:{DXL_ID_list[0]}, GoalPos :{pos_to_angle(dxl_goal_position[index])}({dxl_goal_position[index]}) \
-                                    PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
-
-        if not abs(dxl_goal_position[index] - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD:
+            if not abs(dxl_goal_position[i][index] - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD:
+                break_bool = True
+                break
+        if break_bool:
             break
-
     # Change goal position
     if index == 0:
         index = 1

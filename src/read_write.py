@@ -55,7 +55,6 @@ def get_predict_info(frame, model):
 
     # original predicted results image
     # result_image = predicted_results.plot()
-
     # get result
     clf_results = predicted_results.boxes.cls
     percentage_result = predicted_results.boxes.conf
@@ -101,14 +100,12 @@ def realsense_config():
     return pipeline
 import serial
 if __name__ == '__main__':
-    # model = YOLO('./data/yolov8n.pt') # load a pretrained model (recommended for training)
-    # cap = cv2.VideoCapture('./data/test3.avi')
-    # mid_point_list = [deque([]) for _ in range(2)]
-    # step_size = 20
+    model = YOLO('./data/yolov8n.pt') # load a pretrained model (recommended for training)
+    cap = cv2.VideoCapture('./data/test3.avi')
+    mid_point_list = [deque([]) for _ in range(2)]
+    step_size = 20
 
     py_serial = serial.Serial(port='/dev/ttyACM0', baudrate=9600)
-
-
     if os.name == 'nt':
         import msvcrt
         def getch():
@@ -136,7 +133,7 @@ if __name__ == '__main__':
 
     DXL_ID_list = [11, 12, 13, 14]
     DEVICE_NUM = len(DXL_ID_list)
-    DEVICENAME = '/dev/ttyUSB1'
+    DEVICENAME = '/dev/ttyUSB0'
 
 
     TORQUE_ENABLE               = 1     # Value for enabling the torque
@@ -155,19 +152,24 @@ if __name__ == '__main__':
         enable_torque(packetHandler_list[i], portHandler_list[i], DXL_ID_list[i])
 
     while True:
+
+        
+        ##############################################################################################
         # print("Press any key to continue! (or press ESC to quit!)")
-        key_input = getch()
-        if key_input == chr(0x1b):
+        key_input = cv2.waitKey(1)
+        print('test')
+        
+        if key_input == 27:
             break
-        elif key_input == 'w':
+        elif key_input == ord('w'):
             dxl_goal_position[3] -= angle_to_pos(1)
-        elif key_input == 's':
+        elif key_input == ord('s'):
             dxl_goal_position[3] += angle_to_pos(1)
-        elif key_input == 'a':
+        elif key_input == ord('a'):
             dxl_goal_position[0] += angle_to_pos(1)
-        elif key_input == 'd':
+        elif key_input == ord('d'):
             dxl_goal_position[0] -= angle_to_pos(1)
-        elif key_input == 'l':
+        elif key_input == ord('l'):
             # send l to arduino uno
             py_serial.write(b'l')
 
@@ -184,6 +186,37 @@ if __name__ == '__main__':
         # read goal and current pos
         break_bool = False
         while True:
+
+            ret, frame = cap.read()
+            clf_results, percentage_result, coordinate_result  = get_predict_info(frame, model)
+            max_arg = 0
+
+            for label_index in range(len(clf_results)):
+                if int(clf_results[label_index]) == 14:
+                    if max_arg < percentage_result[label_index]:
+                        max_arg = percentage_result[label_index]
+                        x1, y1, x2, y2 = map(int, coordinate_result[label_index])
+
+
+                        frame_mid_point, target_mid_point = get_camera_goal_pos(x1, y1, x2, y2, frame)
+
+                        dx = frame_mid_point[0] - target_mid_point[0]
+                        dy = frame_mid_point[1] - target_mid_point[1]
+
+                        mid_point_list[0].append(dx)
+                        mid_point_list[1].append(dy)
+
+                        # pop the first element
+
+                        if len(mid_point_list[0]) > step_size:
+                            mid_point_list[0].popleft()
+                            mid_point_list[1].popleft()
+
+                        target_mid_point = (sum(mid_point_list[0])//step_size*-1, sum(mid_point_list[1])//step_size*-1)
+                        
+                        draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point)
+            cv2.imshow('frame', frame)
+
             for i in range(0, DEVICE_NUM):
                 dxl_present_position, dxl_comm_result, dxl_error = packetHandler_list[i].read4ByteTxRx(portHandler_list[i], DXL_ID_list[i], ADDR_PRESENT_POSITION)
 
@@ -198,12 +231,9 @@ if __name__ == '__main__':
                 if not abs(dxl_goal_position[i] - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD:
                     break_bool = True
                     break
-            print('=====================================')
+
             if break_bool:
                 break
-
-        if index == 0:
-            index = 1
 
 
     # Disable Dynamixel Torque
@@ -218,3 +248,4 @@ if __name__ == '__main__':
 
     # Close port
     portHandler_list[0].closePort()
+    cap.release()

@@ -1,7 +1,11 @@
 import os
 from dynamixel_sdk import * # Uses Dynamixel SDK library
+from ultralytics import YOLO
 import cv2
-import curses
+import numpy as np
+import pyrealsense2 as rs
+from collections import deque
+
 
 def pos_to_angle(pos):
     return int(pos/4095*365)
@@ -39,9 +43,72 @@ def enable_torque(packetHandler, portHandler_list, DXL_ID):
     else:
         print("Dynamixel has been successfully connected")
 
+# ============================== openCV ================================
+def get_camera_goal_pos(x1,y1, x2,y2,frame):
+    frame_width, frame_height, _ = frame.shape
+    frame_mid_point = (frame_height//2, frame_width//2)
+    target_mid_point = ((x1+x2)//2 , (y1+y2)//2)
+    return frame_mid_point, target_mid_point
 
+def get_predict_info(frame, model):
+    predicted_results = model(frame)[0]
 
+    # original predicted results image
+    # result_image = predicted_results.plot()
+
+    # get result
+    clf_results = predicted_results.boxes.cls
+    percentage_result = predicted_results.boxes.conf
+    coordinate_result = predicted_results.boxes.xyxy
+
+    # convert to list
+    clf_results = clf_results.tolist()
+    percentage_result = percentage_result.tolist()
+    coordinate_result = coordinate_result.tolist()
+    return clf_results, percentage_result, coordinate_result
+
+    
+
+def get_realsense_frame(pipeline):
+    frames = pipeline.wait_for_frames()
+    color_frame = frames.get_color_frame()
+    color_image = np.asanyarray(color_frame.get_data())
+    return color_image
+
+def draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point):
+    # Draw a point on the image
+    cv2.circle(frame, frame_mid_point, radius=5, color=(0, 0, 255), thickness=-1)
+    dx, dy = target_mid_point
+    target_x = (frame_mid_point[0] + dx) 
+    target_y = (frame_mid_point[1] + dy)
+    cv2.circle(frame, (target_x, target_y), radius=5, color=(255, 0, 0), thickness=-1)
+
+    # Draw a line on the image
+    cv2.line(frame, frame_mid_point, (target_x, target_y), color=(0, 0, 255), thickness=2)
+
+    # Draw a label on the image
+    cv2.rectangle(frame, (x1, y1-100), (x1+100, y1), (0,0,0), -1)
+    cv2.putText(frame, 'bird ' + str(round(percentage_result[label_index]*100, 2)) + '%',
+                (x1, y1-20), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,255,255), 2, cv2.LINE_AA)            
+    cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 3)
+
+def realsense_config():
+    pipeline = rs.pipeline()
+    config = rs.config()
+    config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+    config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+    pipeline.start(config)
+    return pipeline
+import serial
 if __name__ == '__main__':
+    # model = YOLO('./data/yolov8n.pt') # load a pretrained model (recommended for training)
+    # cap = cv2.VideoCapture('./data/test3.avi')
+    # mid_point_list = [deque([]) for _ in range(2)]
+    # step_size = 20
+
+    py_serial = serial.Serial(port='/dev/ttyACM0', baudrate=9600)
+
+
     if os.name == 'nt':
         import msvcrt
         def getch():
@@ -100,6 +167,9 @@ if __name__ == '__main__':
             dxl_goal_position[0] += angle_to_pos(1)
         elif key_input == 'd':
             dxl_goal_position[0] -= angle_to_pos(1)
+        elif key_input == 'l':
+            # send l to arduino uno
+            py_serial.write(b'l')
 
         # Write goal position
         for i in range(0, DEVICE_NUM):

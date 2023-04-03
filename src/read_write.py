@@ -100,10 +100,14 @@ def realsense_config():
     return pipeline
 import serial
 if __name__ == '__main__':
+    
     model = YOLO('./data/yolov8n.pt') # load a pretrained model (recommended for training)
-    cap = cv2.VideoCapture('./data/test3.avi')
+    
+    # cap = cv2.VideoCapture('./data/test3.avi')
+    pipeline = realsense_config()
+
     mid_point_list = [deque([]) for _ in range(2)]
-    step_size = 20
+    step_size = 100
 
     py_serial = serial.Serial(port='/dev/ttyACM0', baudrate=9600)
     if os.name == 'nt':
@@ -152,12 +156,7 @@ if __name__ == '__main__':
         enable_torque(packetHandler_list[i], portHandler_list[i], DXL_ID_list[i])
 
     while True:
-
-        
-        ##############################################################################################
-        # print("Press any key to continue! (or press ESC to quit!)")
         key_input = cv2.waitKey(1)
-        print('test')
         
         if key_input == 27:
             break
@@ -187,7 +186,9 @@ if __name__ == '__main__':
         break_bool = False
         while True:
 
-            ret, frame = cap.read()
+            # ret, frame = cap.read()
+            frame = get_realsense_frame(pipeline)
+
             clf_results, percentage_result, coordinate_result  = get_predict_info(frame, model)
             max_arg = 0
 
@@ -214,6 +215,14 @@ if __name__ == '__main__':
 
                         target_mid_point = (sum(mid_point_list[0])//step_size*-1, sum(mid_point_list[1])//step_size*-1)
                         
+                        fx, fy = (frame_mid_point[0] - target_mid_point[0], frame_mid_point[1] - target_mid_point[1])
+                        # print(fx, fy)
+                        # if angle_to_pos(180-50) < dxl_goal_position[0] < angle_to_pos(180+50):
+                        #     dxl_goal_position[0] += angle_to_pos(fx* 0.156)
+                        # if angle_to_pos(180-20) < dxl_goal_position[3] < angle_to_pos(180+20):
+                        #     dxl_goal_position[3] += angle_to_pos(fy* 0.833)
+                            
+
                         draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point)
             cv2.imshow('frame', frame)
 
@@ -224,7 +233,7 @@ if __name__ == '__main__':
                     print("%s" % packetHandler_list[i].getTxRxResult(dxl_comm_result))
                 elif dxl_error != 0:
                     print("%s" % packetHandler_list[i].getRxPacketError(dxl_error))
-
+                i = 3
                 print(f'id:{DXL_ID_list[i]}, GoalPos :{pos_to_angle(dxl_goal_position[i])}({dxl_goal_position[i]}) | PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
 
 

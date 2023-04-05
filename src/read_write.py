@@ -46,7 +46,10 @@ def enable_torque(packetHandler, portHandler_list, DXL_ID):
 # ============================== openCV ================================
 def get_camera_goal_pos(x1,y1, x2,y2,frame):
     frame_width, frame_height, _ = frame.shape
-    frame_mid_point = (frame_height//2, frame_width//2)
+    frame_mid_point = (frame_height//2 + 53 , frame_width//2 - 58)
+    # 378, 187
+    # 320, 240
+    # 640, 480
     target_mid_point = ((x1+x2)//2 , (y1+y2)//2)
     return frame_mid_point, target_mid_point
 

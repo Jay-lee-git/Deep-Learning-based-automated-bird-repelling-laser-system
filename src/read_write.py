@@ -64,9 +64,7 @@ def get_predict_info(frame, model):
     clf_results = clf_results.tolist()
     percentage_result = percentage_result.tolist()
     coordinate_result = coordinate_result.tolist()
-    return clf_results, percentage_result, coordinate_result
-
-    
+    return clf_results, percentage_result, coordinate_result   
 
 def get_realsense_frame(pipeline):
     frames = pipeline.wait_for_frames()
@@ -98,7 +96,10 @@ def realsense_config():
     config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
     pipeline.start(config)
     return pipeline
+
 import serial
+
+
 if __name__ == '__main__':
     
     model = YOLO('./data/yolov8n.pt') # load a pretrained model (recommended for training)
@@ -107,9 +108,10 @@ if __name__ == '__main__':
     pipeline = realsense_config()
 
     mid_point_list = [deque([]) for _ in range(2)]
-    step_size = 100
+    step_size = 5
 
     py_serial = serial.Serial(port='/dev/ttyACM0', baudrate=9600)
+    laser_flag = False
     if os.name == 'nt':
         import msvcrt
         def getch():
@@ -138,13 +140,12 @@ if __name__ == '__main__':
     DXL_ID_list = [11, 12, 13, 14]
     DEVICE_NUM = len(DXL_ID_list)
     DEVICENAME = '/dev/ttyUSB0'
-
-
     TORQUE_ENABLE               = 1     # Value for enabling the torque
     TORQUE_DISABLE              = 0     # Value for disabling the torque
-    DXL_MOVING_STATUS_THRESHOLD = 10    # Dynamixel moving status threshold
+    DXL_MOVING_STATUS_THRESHOLD = 60    # Dynamixel moving status threshold
 
     index = 0
+    
     # Goal position
     dxl_goal_position = [angle_to_pos(180), angle_to_pos(100), angle_to_pos(250), angle_to_pos(180)]
 
@@ -155,9 +156,62 @@ if __name__ == '__main__':
         open_port_and_baud(portHandler_list[i])
         enable_torque(packetHandler_list[i], portHandler_list[i], DXL_ID_list[i])
 
+
     while True:
-        key_input = cv2.waitKey(1)
+        # ret, frame = cap.read()
+        frame = get_realsense_frame(pipeline)
+        clf_results, percentage_result, coordinate_result  = get_predict_info(frame, model)
+        max_arg = 0
         
+        # Write goal position
+        for i in range(0, DEVICE_NUM):
+            dxl_comm_result, dxl_error = packetHandler_list[i].write4ByteTxRx(portHandler_list[i], 
+                                                                    DXL_ID_list[i], ADDR_GOAL_POSITION, dxl_goal_position[i])
+        if dxl_comm_result != COMM_SUCCESS:
+            print("%s" % packetHandler_list[0].getTxRxResult(dxl_comm_result))
+        elif dxl_error != 0:
+            print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
+                        
+        for label_index in range(len(clf_results)):
+            if int(clf_results[label_index]) == 14:
+                if max_arg < percentage_result[label_index]:
+                    
+                    max_arg = percentage_result[label_index]
+                    x1, y1, x2, y2 = map(int, coordinate_result[label_index])
+                    frame_mid_point, target_mid_point = get_camera_goal_pos(x1, y1, x2, y2, frame)
+                    
+                    dx = frame_mid_point[0] - target_mid_point[0]
+                    dy = frame_mid_point[1] - target_mid_point[1]
+                    
+                    mid_point_list[0].append(dx)
+                    mid_point_list[1].append(dy)
+                    
+                    # pop the first element
+                    if len(mid_point_list[0]) > step_size:
+                        mid_point_list[0].popleft()
+                        mid_point_list[1].popleft()
+                    target_mid_point = (sum(mid_point_list[0])//step_size*-1, sum(mid_point_list[1])//step_size*-1)
+                    
+                    fx, fy = (frame_mid_point[0] - target_mid_point[0], frame_mid_point[1] - target_mid_point[1])
+                    
+                    print(frame_mid_point[0], frame_mid_point[1], target_mid_point[0], target_mid_point[1])
+                    print(fx , fy)
+                    print(fx* 0.156 , fy * 0.083)
+                    
+                    if angle_to_pos(180-100) < dxl_goal_position[0] < angle_to_pos(180+100):
+                        dxl_goal_position[0] += int(-1 * target_mid_point[0]* 0.156)
+                    else:
+                        dxl_goal_position[0] = angle_to_pos(179)
+                        
+                    if angle_to_pos(180-60) < dxl_goal_position[3] < angle_to_pos(180+60):
+                        dxl_goal_position[3] += int(target_mid_point[1] * 0.083)
+                    else:
+                        dxl_goal_position[3] = angle_to_pos(179)
+                        
+                    draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point)
+                    
+        key_input = cv2.waitKey(1)
+    
         if key_input == 27:
             break
         elif key_input == ord('w'):
@@ -170,79 +224,36 @@ if __name__ == '__main__':
             dxl_goal_position[0] -= angle_to_pos(1)
         elif key_input == ord('l'):
             # send l to arduino uno
+            laser_flag = not laser_flag
             py_serial.write(b'l')
-
-        # Write goal position
-        for i in range(0, DEVICE_NUM):
-            dxl_comm_result, dxl_error = packetHandler_list[i].write4ByteTxRx(portHandler_list[i], 
-                                                                    DXL_ID_list[i], ADDR_GOAL_POSITION, dxl_goal_position[i])
         
-        if dxl_comm_result != COMM_SUCCESS:
-            print("%s" % packetHandler_list[0].getTxRxResult(dxl_comm_result))
-        elif dxl_error != 0:
-            print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
-
-        # read goal and current pos
-        break_bool = False
-        while True:
-
-            # ret, frame = cap.read()
-            frame = get_realsense_frame(pipeline)
-
-            clf_results, percentage_result, coordinate_result  = get_predict_info(frame, model)
-            max_arg = 0
-
-            for label_index in range(len(clf_results)):
-                if int(clf_results[label_index]) == 14:
-                    if max_arg < percentage_result[label_index]:
-                        max_arg = percentage_result[label_index]
-                        x1, y1, x2, y2 = map(int, coordinate_result[label_index])
-
-
-                        frame_mid_point, target_mid_point = get_camera_goal_pos(x1, y1, x2, y2, frame)
-
-                        dx = frame_mid_point[0] - target_mid_point[0]
-                        dy = frame_mid_point[1] - target_mid_point[1]
-
-                        mid_point_list[0].append(dx)
-                        mid_point_list[1].append(dy)
-
-                        # pop the first element
-
-                        if len(mid_point_list[0]) > step_size:
-                            mid_point_list[0].popleft()
-                            mid_point_list[1].popleft()
-
-                        target_mid_point = (sum(mid_point_list[0])//step_size*-1, sum(mid_point_list[1])//step_size*-1)
-                        
-                        fx, fy = (frame_mid_point[0] - target_mid_point[0], frame_mid_point[1] - target_mid_point[1])
-                        # print(fx, fy)
-                        # if angle_to_pos(180-50) < dxl_goal_position[0] < angle_to_pos(180+50):
-                        #     dxl_goal_position[0] += angle_to_pos(fx* 0.156)
-                        # if angle_to_pos(180-20) < dxl_goal_position[3] < angle_to_pos(180+20):
-                        #     dxl_goal_position[3] += angle_to_pos(fy* 0.833)
-                            
-
-                        draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point)
-            cv2.imshow('frame', frame)
-
-            for i in range(0, DEVICE_NUM):
-                dxl_present_position, dxl_comm_result, dxl_error = packetHandler_list[i].read4ByteTxRx(portHandler_list[i], DXL_ID_list[i], ADDR_PRESENT_POSITION)
-
-                if dxl_comm_result != COMM_SUCCESS:
-                    print("%s" % packetHandler_list[i].getTxRxResult(dxl_comm_result))
-                elif dxl_error != 0:
-                    print("%s" % packetHandler_list[i].getRxPacketError(dxl_error))
-                i = 3
-                print(f'id:{DXL_ID_list[i]}, GoalPos :{pos_to_angle(dxl_goal_position[i])}({dxl_goal_position[i]}) | PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
-
-
-                if not abs(dxl_goal_position[i] - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD:
-                    break_bool = True
-                    break
-
-            if break_bool:
-                break
+        cv2.imshow('frame', frame)
+        for i in range(0, DEVICE_NUM):
+            dxl_present_position, dxl_comm_result, dxl_error = packetHandler_list[i].read4ByteTxRx(portHandler_list[i], DXL_ID_list[i], ADDR_PRESENT_POSITION)
+            if dxl_comm_result != COMM_SUCCESS:
+                print("%s" % packetHandler_list[i].getTxRxResult(dxl_comm_result))
+            elif dxl_error != 0:
+                print("%s" % packetHandler_list[i].getRxPacketError(dxl_error))
+            # i = 0
+            # print(f'id:{DXL_ID_list[i]}, GoalPos :{pos_to_angle(dxl_goal_position[i])}({dxl_goal_position[i]}) | PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
+            # i = 1
+            # print(f'id:{DXL_ID_list[i]}, GoalPos :{pos_to_angle(dxl_goal_position[i])}({dxl_goal_position[i]}) | PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
+            # i = 2
+            # print(f'id:{DXL_ID_list[i]}, GoalPos :{pos_to_angle(dxl_goal_position[i])}({dxl_goal_position[i]}) | PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
+            # i = 3
+            # print(f'id:{DXL_ID_list[i]}, GoalPos :{pos_to_angle(dxl_goal_position[i])}({dxl_goal_position[i]}) | PresPos:{pos_to_angle(dxl_present_position)}({dxl_present_position})')
+            
+            # if not abs(dxl_goal_position[i] - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD:
+            #    break_bool = True
+            #    break
+            if not abs(dxl_goal_position[i] - dxl_present_position) > DXL_MOVING_STATUS_THRESHOLD:
+                print("a")
+        print(abs(dxl_goal_position[i] - dxl_present_position))
+        # print(break_bool)
+        # if break_bool:
+        #    break
+        
+        # break
 
 
     # Disable Dynamixel Torque
@@ -257,4 +268,6 @@ if __name__ == '__main__':
 
     # Close port
     portHandler_list[0].closePort()
-    cap.release()
+    if laser_flag == True:
+        py_serial.write(b'l')
+    # cap.release()

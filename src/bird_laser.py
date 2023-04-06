@@ -25,10 +25,10 @@ def angle_to_pos(angle):
     return int(4095/365 * angle)
 
 # Open port baudrate
-def open_port_and_baud(portHandler_list):
+def open_port_and_baud(portHandler_list, index):
     # Open port
     if portHandler_list.openPort():
-        print("Succeeded to open the port")
+        print(f"{index}-Succeeded to open the port | ", end=" ")
     else:
         print("Failed to open the port")
         print("Press any key to terminate...")
@@ -36,7 +36,7 @@ def open_port_and_baud(portHandler_list):
         quit()
     # Set port baudrate
     if portHandler_list.setBaudRate(BAUDRATE):
-        print("Succeeded to change the baudrate")
+        print("Succeeded to change the baudrate | ", end=" ")
     else:
         print("Failed to change the baudrate")
         print("Press any key to terminate...")
@@ -63,7 +63,6 @@ def get_camera_goal_pos(x1,y1, x2,y2,frame):
 
 def get_predict_info(frame, model):
     predicted_results = model(frame)[0]
-
 
     clf_results = predicted_results.boxes.cls
     percentage_result = predicted_results.boxes.conf
@@ -109,15 +108,13 @@ def realsense_config():
 
 if __name__ == '__main__':
 
-
-    model = YOLO('./data/yolov8n.pt') # load a pretrained model (recommended for training)
+    model = YOLO('./data/yolov8m.pt') # load a pretrained model (recommended for training)
     
     # cap = cv2.VideoCapture('./data/test3.avi')
     pipeline = realsense_config()
 
     mid_point_list = [deque([]) for _ in range(2)]
     average_step_size = 5
-    laser_average_step_size = 100
     
     py_serial = serial.Serial(port='/dev/ttyACM0', baudrate=9600)
     laser_flag = False
@@ -151,13 +148,13 @@ if __name__ == '__main__':
     index = 0
     target_pixel_threshold = 10
     # Goal position
-    dxl_goal_position = [angle_to_pos(180), angle_to_pos(100), angle_to_pos(250), angle_to_pos(180)]
-
+    defalut_position = [angle_to_pos(180), angle_to_pos(100), angle_to_pos(250), angle_to_pos(180)]
+    dxl_goal_position = defalut_position
     portHandler_list = [PortHandler(DEVICENAME) for _ in range(DEVICE_NUM)]
     packetHandler_list = [PacketHandler(PROTOCOL_VERSION) for _ in range(DEVICE_NUM)]
 
     for i in range(0, DEVICE_NUM):
-        open_port_and_baud(portHandler_list[i])
+        open_port_and_baud(portHandler_list[i], i)
         enable_torque(packetHandler_list[i], portHandler_list[i], DXL_ID_list[i])
 
     laser_th = Thread(target=shoot_laser, daemon=True)
@@ -184,15 +181,11 @@ if __name__ == '__main__':
             x1, y1, x2, y2 = map(int, coordinate_result[label_index])
             frame_mid_point, target_mid_point = get_camera_goal_pos(x1, y1, x2, y2, frame)
             
-            dx = frame_mid_point[0] - target_mid_point[0]
-            dy = frame_mid_point[1] - target_mid_point[1]
-            
-
-            mid_point_list[0].append(dx)
-            mid_point_list[1].append(dy)
+            mid_point_list[0].append(frame_mid_point[0] - target_mid_point[0])
+            mid_point_list[1].append(frame_mid_point[1] - target_mid_point[1])
 
             
-            # pop the first element
+            # pop the first element if it more than step_size
             if len(mid_point_list[0]) > average_step_size:
                 mid_point_list[0].popleft()
                 mid_point_list[1].popleft()
@@ -221,11 +214,8 @@ if __name__ == '__main__':
         else:
             laser_flag = False
         
-        # if laser_flag:
-        #     py_serial.write(b'True')
-        # else:
-        #     py_serial.write(b'False')
 
+        ############# key input #############
         key_input = cv2.waitKey(1)
     
         if key_input == 27:
@@ -240,9 +230,8 @@ if __name__ == '__main__':
             dxl_goal_position[0] -= angle_to_pos(1)
         elif key_input == ord('l'):
             # send l to arduino uno
-            py_serial.write(b'True')
+            laser_flag = True
         elif key_input == ord('p'):
-            py_serial.write(b'False')
             TARGET_INDEX_CODE = 14.0
         elif key_input == ord('h'):
             TARGET_INDEX_CODE = 0.0
@@ -256,16 +245,9 @@ if __name__ == '__main__':
             elif dxl_error != 0:
                 print("%s" % packetHandler_list[i].getRxPacketError(dxl_error))
            
-
     # Disable Dynamixel Torque
     for i in range(0, DEVICE_NUM):
         dxl_comm_result, dxl_error = packetHandler_list[i].write1ByteTxRx(portHandler_list[i], DXL_ID_list [i], ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
-
-
-    if dxl_comm_result != COMM_SUCCESS:
-        print("%s" % pos_to_angle(packetHandler_list[0].getTxRxResult(dxl_comm_result)))
-    elif dxl_error != 0:
-        print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
 
     # Close port
     portHandler_list[0].closePort()

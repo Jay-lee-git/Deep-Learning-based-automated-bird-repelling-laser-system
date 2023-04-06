@@ -5,7 +5,8 @@ import cv2
 import numpy as np
 import pyrealsense2 as rs
 from collections import deque
-
+import sys, tty, termios
+import serial
 
 def pos_to_angle(pos):
     return int(pos/4095*365)
@@ -43,7 +44,7 @@ def enable_torque(packetHandler, portHandler_list, DXL_ID):
     else:
         print("Dynamixel has been successfully connected")
 
-# ============================== openCV ================================
+
 def get_camera_goal_pos(x1,y1, x2,y2,frame):
     frame_width, frame_height, _ = frame.shape
     frame_mid_point = (frame_height//2 + 53 , frame_width//2 - 58)
@@ -53,9 +54,7 @@ def get_camera_goal_pos(x1,y1, x2,y2,frame):
 def get_predict_info(frame, model):
     predicted_results = model(frame)[0]
 
-    # original predicted results image
-    # result_image = predicted_results.plot()
-    # get result
+
     clf_results = predicted_results.boxes.cls
     percentage_result = predicted_results.boxes.conf
     coordinate_result = predicted_results.boxes.xyxy
@@ -107,8 +106,6 @@ def NOR(a, b):
     elif(a == True) and (b == True): 
         return False
 
-import serial
-
 
 if __name__ == '__main__':
     
@@ -118,26 +115,21 @@ if __name__ == '__main__':
     pipeline = realsense_config()
 
     mid_point_list = [deque([]) for _ in range(2)]
-    step_size = 5
-
+    laser_point_list = [deque([]) for _ in range(2)]
+    average_step_size = 5
+    laser_average_step_size = 100
+    laser_flag = False
     py_serial = serial.Serial(port='/dev/ttyACM0', baudrate=9600)
-    target_set_flag = False
-    laser_status_flag = False
-    if os.name == 'nt':
-        import msvcrt
-        def getch():
-            return msvcrt.getch().decode()
-    else:
-        import sys, tty, termios
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        def getch():
-            try:
-                tty.setraw(sys.stdin.fileno())
-                ch = sys.stdin.read(1)
-            finally:
-                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-            return ch
+
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    def getch():
+        try:
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
 
 
     ADDR_TORQUE_ENABLE          = 64
@@ -157,7 +149,7 @@ if __name__ == '__main__':
     DXL_MOVING_STATUS_THRESHOLD = 60    # Dynamixel moving status threshold
 
     index = 0
-    THRESHOLD = 10
+    target_pixel_threshold = 10
     # Goal position
     dxl_goal_position = [angle_to_pos(180), angle_to_pos(100), angle_to_pos(250), angle_to_pos(180)]
 
@@ -196,20 +188,26 @@ if __name__ == '__main__':
 
             mid_point_list[0].append(dx)
             mid_point_list[1].append(dy)
+
             
             # pop the first element
-            if len(mid_point_list[0]) > step_size:
+            if len(mid_point_list[0]) > average_step_size:
                 mid_point_list[0].popleft()
                 mid_point_list[1].popleft()
-            target_mid_point = (sum(mid_point_list[0])//step_size*-1, sum(mid_point_list[1])//step_size*-1)
-            # print(target_mid_point, frame_mid_point)
-            fx, fy = (frame_mid_point[0] - target_mid_point[0], frame_mid_point[1] - target_mid_point[1])
-            # print(fx, fy)
 
-            if target_mid_point[0] < THRESHOLD and target_mid_point[1] < THRESHOLD:
-                target_set_flag = True
+            if len(laser_point_list[0]) > laser_average_step_size:
+                laser_point_list[0].popleft()
+                laser_point_list[1].popleft()
+
+            target_mid_point = (sum(mid_point_list[0])//average_step_size*-1, sum(mid_point_list[1])//average_step_size*-1)
+
+            print(target_mid_point)
+
+            if abs(target_mid_point[0]) < 10 and abs(target_mid_point[1]) < target_pixel_threshold:
+                laser_flag= True
             else:
-                target_set_flag = False
+                laser_flag = False
+
             
             if angle_to_pos(180-100) < dxl_goal_position[0] < angle_to_pos(180+100):
                 dxl_goal_position[0] += int(-1 * target_mid_point[0]* 0.156)
@@ -223,7 +221,12 @@ if __name__ == '__main__':
                 
             draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point)
         else:
-            target_set_flag = False
+            laser_flag = False
+        
+        if laser_flag:
+            py_serial.write(b'True')
+        else:
+            py_serial.write(b'False')
         key_input = cv2.waitKey(1)
     
         if key_input == 27:
@@ -238,8 +241,9 @@ if __name__ == '__main__':
             dxl_goal_position[0] -= angle_to_pos(1)
         elif key_input == ord('l'):
             # send l to arduino uno
-            target_set_flag = not target_set_flag
+            py_serial.write(b'True')
         elif key_input == ord('p'):
+            py_serial.write(b'False')
             TARGET_INDEX_CODE = 14.0
         elif key_input == ord('h'):
             TARGET_INDEX_CODE = 0.0
@@ -253,9 +257,6 @@ if __name__ == '__main__':
             elif dxl_error != 0:
                 print("%s" % packetHandler_list[i].getRxPacketError(dxl_error))
            
-        if NOR(target_set_flag, laser_status_flag):
-            py_serial.write(b'l')
-            laser_status_flag = not laser_status_flag
 
     # Disable Dynamixel Torque
     for i in range(0, DEVICE_NUM):
@@ -269,6 +270,5 @@ if __name__ == '__main__':
 
     # Close port
     portHandler_list[0].closePort()
-    if laser_status_flag == True:
-        py_serial.write(b'l')
+    py_serial.write(b'False')
     # cap.release()

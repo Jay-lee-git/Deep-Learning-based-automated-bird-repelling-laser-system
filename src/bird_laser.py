@@ -7,6 +7,16 @@ import pyrealsense2 as rs
 from collections import deque
 import sys, tty, termios
 import serial
+from threading import Thread
+
+def shoot_laser():
+    global laser_flag
+    while(True):
+        time.sleep(0.1)
+        if laser_flag:
+            py_serial.write(b'True')
+        else:
+            py_serial.write(b'False')
 
 def pos_to_angle(pos):
     return int(pos/4095*365)
@@ -96,31 +106,21 @@ def realsense_config():
     pipeline.start(config)
     return pipeline
 
-def NOR(a, b): 
-    if(a == False) and (b == False): 
-        return False
-    elif(a == False) and (b == True): 
-        return True
-    elif(a == True) and (b == False): 
-        return True
-    elif(a == True) and (b == True): 
-        return False
-
 
 if __name__ == '__main__':
-    
+
+
     model = YOLO('./data/yolov8n.pt') # load a pretrained model (recommended for training)
     
     # cap = cv2.VideoCapture('./data/test3.avi')
     pipeline = realsense_config()
 
     mid_point_list = [deque([]) for _ in range(2)]
-    laser_point_list = [deque([]) for _ in range(2)]
     average_step_size = 5
     laser_average_step_size = 100
-    laser_flag = False
+    
     py_serial = serial.Serial(port='/dev/ttyACM0', baudrate=9600)
-
+    laser_flag = False
     fd = sys.stdin.fileno()
     old_settings = termios.tcgetattr(fd)
     def getch():
@@ -160,6 +160,8 @@ if __name__ == '__main__':
         open_port_and_baud(portHandler_list[i])
         enable_torque(packetHandler_list[i], portHandler_list[i], DXL_ID_list[i])
 
+    laser_th = Thread(target=shoot_laser, daemon=True)
+    laser_th.start()
 
     while True:
         # ret, frame = cap.read()
@@ -195,15 +197,11 @@ if __name__ == '__main__':
                 mid_point_list[0].popleft()
                 mid_point_list[1].popleft()
 
-            if len(laser_point_list[0]) > laser_average_step_size:
-                laser_point_list[0].popleft()
-                laser_point_list[1].popleft()
-
             target_mid_point = (sum(mid_point_list[0])//average_step_size*-1, sum(mid_point_list[1])//average_step_size*-1)
 
             print(target_mid_point)
 
-            if abs(target_mid_point[0]) < 10 and abs(target_mid_point[1]) < target_pixel_threshold:
+            if abs(target_mid_point[0]) < target_pixel_threshold and abs(target_mid_point[1]) < target_pixel_threshold:
                 laser_flag= True
             else:
                 laser_flag = False
@@ -223,10 +221,11 @@ if __name__ == '__main__':
         else:
             laser_flag = False
         
-        if laser_flag:
-            py_serial.write(b'True')
-        else:
-            py_serial.write(b'False')
+        # if laser_flag:
+        #     py_serial.write(b'True')
+        # else:
+        #     py_serial.write(b'False')
+
         key_input = cv2.waitKey(1)
     
         if key_input == 27:

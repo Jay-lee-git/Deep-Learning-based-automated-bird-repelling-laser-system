@@ -1,5 +1,4 @@
-import os
-from dynamixel_sdk import * # Uses Dynamixel SDK library
+from dynamixel_sdk import * 
 from ultralytics import YOLO
 import cv2
 import numpy as np
@@ -8,7 +7,7 @@ from collections import deque
 import sys, tty, termios
 import serial
 from threading import Thread
-
+from datetime import datetime 
 def shoot_laser():
     global laser_flag
     while(True):
@@ -56,9 +55,11 @@ def enable_torque(packetHandler, portHandler_list, DXL_ID):
 
 
 def get_camera_goal_pos(x1,y1, x2,y2,frame):
-    frame_width, frame_height, _ = frame.shape
-    frame_mid_point = (frame_height//2 + 53 , frame_width//2 - 58)
-    target_mid_point = ((x1+x2)//2 , (y1+y2)//2)
+    frame_height, frame_width, _ = frame.shape
+    # print('frane width and height', frame_width, frame_height)
+    frame_mid_point = (frame_width//2, frame_height//2)
+    # print(frame_mid_point)
+    target_mid_point = ((x1+x2)//2 -26, (y1+y2)//2 -2)
     return frame_mid_point, target_mid_point
 
 def get_predict_info(frame, model):
@@ -87,7 +88,7 @@ def draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point):
     target_x = (frame_mid_point[0] + dx) 
     target_y = (frame_mid_point[1] + dy)
     cv2.circle(frame, (target_x, target_y), radius=5, color=(255, 0, 0), thickness=-1)
-
+# 
     # Draw a line on the image
     cv2.line(frame, frame_mid_point, (target_x, target_y), color=(0, 0, 255), thickness=2)
 
@@ -107,12 +108,17 @@ def realsense_config():
 
 
 if __name__ == '__main__':
-
-    model = YOLO('./data/yolov8m.pt') # load a pretrained model (recommended for training)
+    today = datetime.now()
+    today = today.strftime('%Y-%m-%d_%H-%M-%S')
+    model = YOLO('./data/yolov8x.pt') # load a pretrained model (recommended for training)
     
-    # cap = cv2.VideoCapture('./data/test3.avi')
+    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
+    out = cv2.VideoWriter('./data/output'+ today + '.avi', fourcc, 20.0, (640, 480))
+    
+    # cap = cv2.VideoCapture('./data/test5.avi')
     pipeline = realsense_config()
 
+    
     mid_point_list = [deque([]) for _ in range(2)]
     average_step_size = 5
     
@@ -160,11 +166,12 @@ if __name__ == '__main__':
     laser_th = Thread(target=shoot_laser, daemon=True)
     laser_th.start()
 
+
     while True:
         # ret, frame = cap.read()
         frame = get_realsense_frame(pipeline)
         clf_results, percentage_result, coordinate_result  = get_predict_info(frame, model)
-        max_arg = 0
+
         
         # Write goal position
         for i in range(0, DEVICE_NUM):
@@ -174,6 +181,9 @@ if __name__ == '__main__':
             print("%s" % packetHandler_list[0].getTxRxResult(dxl_comm_result))
         elif dxl_error != 0:
             print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
+
+        print(clf_results)
+        print(percentage_result)
 
         if TARGET_INDEX_CODE in clf_results:    
             label_index = clf_results.index(TARGET_INDEX_CODE)
@@ -215,7 +225,6 @@ if __name__ == '__main__':
             laser_flag = False
         
 
-        ############# key input #############
         key_input = cv2.waitKey(1)
     
         if key_input == 27:
@@ -229,15 +238,14 @@ if __name__ == '__main__':
         elif key_input == ord('d'):
             dxl_goal_position[0] -= angle_to_pos(1)
         elif key_input == ord('l'):
-            # send l to arduino uno
             laser_flag = True
-        elif key_input == ord('p'):
-            TARGET_INDEX_CODE = 14.0
-        elif key_input == ord('h'):
-            TARGET_INDEX_CODE = 0.0
-
-
+        # elif key_input == ord('p'):
+        #     TARGET_INDEX_CODE = 14.0
+        # elif key_input == ord('h'):
+        #     TARGET_INDEX_CODE = 0.0S
+        out.write(frame)
         cv2.imshow('frame', frame)
+
         for i in range(0, DEVICE_NUM):
             dxl_present_position, dxl_comm_result, dxl_error = packetHandler_list[i].read4ByteTxRx(portHandler_list[i], DXL_ID_list[i], ADDR_PRESENT_POSITION)
             if dxl_comm_result != COMM_SUCCESS:     

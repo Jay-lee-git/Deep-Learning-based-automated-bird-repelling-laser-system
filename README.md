@@ -3,7 +3,7 @@
 automated laser system tracking bird using YOLOV8x
 
 영상상으로만 레이저로 쫓는 짤  
-오픈메니풀레이터가 쫓는 짤
+오픈메니풀레이터가  짤
 
 
 ## Test Env.
@@ -18,6 +18,9 @@ The code is tested successfully at
 - U2D2
 - RealSense D435
 - Arduino Uno
+- [Laser303](https://smartstore.naver.com/athlove1/products/8087044267?)
+- 3d printed laser and D435 holder
+    - stl file [download link](www.google.com)
 
 
 ## Requirements

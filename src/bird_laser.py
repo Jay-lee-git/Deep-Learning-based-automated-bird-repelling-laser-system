@@ -61,7 +61,8 @@ def get_camera_goal_pos(x1,y1, x2,y2,frame):
     # print(frame_mid_point)
     target_mid_point = ((x1+x2)//2 -26, (y1+y2)//2 -2)
     return frame_mid_point, target_mid_point
-
+def get_box_size(x1,y1, x2, y2):
+    return abs((x2-x1) * (y2-y1))
 def get_predict_info(frame, model):
     predicted_results = model(frame)[0]
 
@@ -94,7 +95,7 @@ def draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point):
 
     # Draw a label on the image
     cv2.rectangle(frame, (x1, y1-100), (x1+100, y1), (0,0,0), -1)
-    cv2.putText(frame, 'bird ' + str(round(percentage_result[label_index]*100, 2)) + '%',
+    cv2.putText(frame, 'bird ' + str(round(percentage_result[max_index]*100, 2)) + '%',
                 (x1, y1-20), cv2.FONT_HERSHEY_SIMPLEX, 2, (255,255,255), 2, cv2.LINE_AA)            
     cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 3)
 
@@ -110,7 +111,8 @@ def realsense_config():
 if __name__ == '__main__':
     today = datetime.now()
     today = today.strftime('%Y-%m-%d_%H-%M-%S')
-    model = YOLO('./data/yolov8x.pt') # load a pretrained model (recommended for training)
+    model = YOLO('./data/yolov8l.pt') # load a pretrained model (recommended for training)
+    #model size: x -> l -> m -> s -> n
     
     fourcc = cv2.VideoWriter_fourcc(*'DIVX')
     out = cv2.VideoWriter('./data/output'+ today + '.avi', fourcc, 20.0, (640, 480))
@@ -182,51 +184,63 @@ if __name__ == '__main__':
         elif dxl_error != 0:
             print("%s" % packetHandler_list[0].getRxPacketError(dxl_error))
 
-        print(clf_results)
-        print(percentage_result)
+        # print('clf_results', clf_results)
+        # print('percentage_result', percentage_result)
 
-        if TARGET_INDEX_CODE in clf_results:    
-            label_index = clf_results.index(TARGET_INDEX_CODE)
+
+        target_bird = []
+        
+        if TARGET_INDEX_CODE in clf_results:
+            for object_index in range(len(clf_results)):
+                if clf_results[object_index] == TARGET_INDEX_CODE and percentage_result[object_index] > 0.8:
+                    x1, y1, x2, y2 = map(int, coordinate_result[object_index])
+                    print('x1,x2,y1,y2', x1, y1, x2, y2)
+                    target_bird.append(get_box_size(x1,y1, x2, y2))
+            print('target',target_bird)
+            if target_bird != []:
                     
-            x1, y1, x2, y2 = map(int, coordinate_result[label_index])
-            frame_mid_point, target_mid_point = get_camera_goal_pos(x1, y1, x2, y2, frame)
-            
-            mid_point_list[0].append(frame_mid_point[0] - target_mid_point[0])
-            mid_point_list[1].append(frame_mid_point[1] - target_mid_point[1])
+                max_index = max(target_bird)
+                max_index = target_bird.index(max_index)
+                x1, y1, x2, y2 = map(int, coordinate_result[max_index])
+                        
+                
+                frame_mid_point, target_mid_point = get_camera_goal_pos(x1, y1, x2, y2, frame)
+                
+                mid_point_list[0].append(frame_mid_point[0] - target_mid_point[0])
+                mid_point_list[1].append(frame_mid_point[1] - target_mid_point[1])
 
-            
-            # pop the first element if it more than step_size
-            if len(mid_point_list[0]) > average_step_size:
-                mid_point_list[0].popleft()
-                mid_point_list[1].popleft()
+                
+                # pop the first element if it more than step_size
+                if len(mid_point_list[0]) > average_step_size:
+                    mid_point_list[0].popleft()
+                    mid_point_list[1].popleft()
 
-            target_mid_point = (sum(mid_point_list[0])//average_step_size*-1, sum(mid_point_list[1])//average_step_size*-1)
+                target_mid_point = (sum(mid_point_list[0])//average_step_size*-1, sum(mid_point_list[1])//average_step_size*-1)
 
-            print(target_mid_point)
+                print(target_mid_point)
 
-            if abs(target_mid_point[0]) < target_pixel_threshold and abs(target_mid_point[1]) < target_pixel_threshold:
-                laser_flag= True
+                if abs(target_mid_point[0]) < target_pixel_threshold and abs(target_mid_point[1]) < target_pixel_threshold:
+                    laser_flag= True
+                else:
+                    laser_flag = False
+
+                
+                if angle_to_pos(180-100) < dxl_goal_position[0] < angle_to_pos(180+100):
+                    dxl_goal_position[0] += int(-1 * target_mid_point[0]* 0.156)
+                else:
+                    dxl_goal_position[0] = angle_to_pos(179)
+                    
+                if angle_to_pos(180-60) < dxl_goal_position[3] < angle_to_pos(180+60):
+                    dxl_goal_position[3] += int(target_mid_point[1] * 0.083)
+                else:
+                    dxl_goal_position[3] = angle_to_pos(179)
+                    
+                draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point)
             else:
                 laser_flag = False
-
-            
-            if angle_to_pos(180-100) < dxl_goal_position[0] < angle_to_pos(180+100):
-                dxl_goal_position[0] += int(-1 * target_mid_point[0]* 0.156)
-            else:
-                dxl_goal_position[0] = angle_to_pos(179)
-                
-            if angle_to_pos(180-60) < dxl_goal_position[3] < angle_to_pos(180+60):
-                dxl_goal_position[3] += int(target_mid_point[1] * 0.083)
-            else:
-                dxl_goal_position[3] = angle_to_pos(179)
-                
-            draw_target(x1, y1, x2, y2, frame, frame_mid_point, target_mid_point)
-        else:
-            laser_flag = False
         
 
         key_input = cv2.waitKey(1)
-    
         if key_input == 27:
             break
         elif key_input == ord('w'):
@@ -239,10 +253,6 @@ if __name__ == '__main__':
             dxl_goal_position[0] -= angle_to_pos(1)
         elif key_input == ord('l'):
             laser_flag = True
-        # elif key_input == ord('p'):
-        #     TARGET_INDEX_CODE = 14.0
-        # elif key_input == ord('h'):
-        #     TARGET_INDEX_CODE = 0.0S
         out.write(frame)
         cv2.imshow('frame', frame)
 

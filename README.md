@@ -7,7 +7,6 @@ automated laser system tracking bird using YOLOV8x
 
 
 ## Test Env.
----
 The code is tested successfully at
 - Python 3.8.10
 - Linux 20.04 LTS
@@ -24,7 +23,7 @@ The code is tested successfully at
 
 
 ## Requirements
----
+
 ### YOLOv8 Setting
 - Install YOLOv8 on a machine by [ultralytics](https://github.com/ultralytics/ultralytics) git link
 
@@ -45,10 +44,10 @@ pip install pyrealsense2
 pip install cv2
 ```
 ## How to Run ERASOR
----
+
 `bird_laser.py` : main code to run  
 `get_current_pos.py` : to get current pose of each motors
 
 ## Results
----
+
 ![pigeon_synced_highlight_gif](https://user-images.githubusercontent.com/117917498/230707315-8e3973ec-ad56-4bce-ad5b-18a61c6b8639.gif)

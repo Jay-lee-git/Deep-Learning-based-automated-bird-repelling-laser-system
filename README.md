@@ -51,5 +51,4 @@ pip install cv2
 
 ## Results
 ---
-영상상으로만 레이저로 쫓는 짤
-오픈메니풀레이터가 쫓는 짤
+![pigeon_synced_highlight_gif](https://user-images.githubusercontent.com/117917498/230707315-8e3973ec-ad56-4bce-ad5b-18a61c6b8639.gif)

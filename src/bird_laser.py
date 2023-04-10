@@ -111,14 +111,14 @@ def realsense_config():
 if __name__ == '__main__':
     today = datetime.now()
     today = today.strftime('%Y-%m-%d_%H-%M-%S')
-    model = YOLO('./data/yolov8l.pt') # load a pretrained model (recommended for training)
+    model = YOLO('./data/yolov8m.pt') # load a pretrained model (recommended for training)
     #model size: x -> l -> m -> s -> n
     
-    fourcc = cv2.VideoWriter_fourcc(*'DIVX')
-    out = cv2.VideoWriter('./data/output'+ today + '.avi', fourcc, 20.0, (640, 480))
+    #fourcc = cv2.VideoWriter_fourcc(*'DIVX')
+    # out = cv2.VideoWriter('./data/output'+ today + '.avi', fourcc, 20.0, (640, 480))
     
-    # cap = cv2.VideoCapture('./data/test5.avi')
-    pipeline = realsense_config()
+    cap = cv2.VideoCapture('./data/test5.avi')
+    # pipeline = realsense_config()
 
     
     mid_point_list = [deque([]) for _ in range(2)]
@@ -170,8 +170,8 @@ if __name__ == '__main__':
 
 
     while True:
-        # ret, frame = cap.read()
-        frame = get_realsense_frame(pipeline)
+        ret, frame = cap.read()
+        # frame = get_realsense_frame(pipeline)
         clf_results, percentage_result, coordinate_result  = get_predict_info(frame, model)
 
         
@@ -191,18 +191,27 @@ if __name__ == '__main__':
         target_bird = []
         
         if TARGET_INDEX_CODE in clf_results:
-            for object_index in range(len(clf_results)):
-                if clf_results[object_index] == TARGET_INDEX_CODE and percentage_result[object_index] > 0.8:
+            tmp_bird_idx = []
+            for object_index, clf_each in enumerate(clf_results):
+                # print(clf_results[object_index],percentage_result[object_index])
+                print(coordinate_result[object_index])
+                if clf_each == TARGET_INDEX_CODE and percentage_result[object_index] > 0.8:
+                    tmp_bird_idx.append(object_index)
                     x1, y1, x2, y2 = map(int, coordinate_result[object_index])
-                    print('x1,x2,y1,y2', x1, y1, x2, y2)
+                    # print('x1,x2,y1,y2', x1, y1, x2, y2)
                     target_bird.append(get_box_size(x1,y1, x2, y2))
-            print('target',target_bird)
+                    # print('target',target_bird)
+            
             if target_bird != []:
                     
-                max_index = max(target_bird)
+                # max_index = tmp_bird_idx[target_bird.index(max(target_bird))]
                 max_index = target_bird.index(max_index)
+
+                print(max_index)
+
                 x1, y1, x2, y2 = map(int, coordinate_result[max_index])
-                        
+
+                print(x1, y1, x2, y2)  
                 
                 frame_mid_point, target_mid_point = get_camera_goal_pos(x1, y1, x2, y2, frame)
                 
@@ -253,7 +262,7 @@ if __name__ == '__main__':
             dxl_goal_position[0] -= angle_to_pos(1)
         elif key_input == ord('l'):
             laser_flag = True
-        out.write(frame)
+        # out.write(frame)
         cv2.imshow('frame', frame)
 
         for i in range(0, DEVICE_NUM):
@@ -271,3 +280,4 @@ if __name__ == '__main__':
     portHandler_list[0].closePort()
     py_serial.write(b'False')
     # cap.release()
+    # out.release()

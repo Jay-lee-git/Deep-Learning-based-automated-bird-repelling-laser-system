@@ -13,13 +13,16 @@ The code is tested successfully at
 - YOLOv8
     - model: yolov8x.pt
 ### Hardware Requirements
+<img src = "https://user-images.githubusercontent.com/117917498/230809004-761e1d38-0fa4-4ef3-87ba-17668b57585b.png" width="50%" height="50%">
+  
 - Dynamixel(XM430-W350-T) * 4
-- U2D2
+- U2D2 motor control board
 - RealSense D435
 - Arduino Uno
 - [Laser303](https://smartstore.naver.com/athlove1/products/8087044267?)
 - 3d printed laser and D435 holder
-    - stl file [download link](www.google.com)
+ 
+
 
 
 ## Requirements

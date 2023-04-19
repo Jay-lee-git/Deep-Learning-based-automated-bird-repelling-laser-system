@@ -44,7 +44,7 @@ pip install dynamixel-sdk
 ```
 pip install serial
 pip install pyrealsense2	
-pip install cv2
+pip install opencv-python
 ```
 ## How to Run ERASOR
 
